@@ -1,0 +1,114 @@
+from requests import get, exceptions
+import os
+import json
+import subprocess
+
+
+# path to ffmpeg bin
+FFMPEG_PATH = r'C:\ffmpeg\bin\ffmpeg'
+
+AVAILABLE_RESOLUTIONS = [1080, 720, 480, 360, 240, 140, 120, '2_4_M', '1_2_M']
+
+
+def get_user_agent():
+    return 'Mozilla/5.0 (Windows NT 6.0) AppleWebKit/5360 (KHTML, like Gecko) Chrome/39.0.872.0 Mobile Safari/5360'
+
+
+def highest_res_url(media_id):
+    all_working_urls = []
+    print('looking for the best quality available for this media')
+    for res in AVAILABLE_RESOLUTIONS:
+        request = get(
+            f'https://v.redd.it/{media_id}/DASH_{res}.mp4?source=fallback',
+            headers={'User-agent': get_user_agent()}
+        )
+        if 'error' in request.text:
+            if request.status_code == 404:
+                print('Post not found', 'error')
+        elif 'Access Denied' in request.text:
+            print(f'{res} not found', 'error')
+        else:
+            print(f'{res} found', 'success')
+            all_working_urls.append(
+                f'https://v.redd.it/{media_id}/DASH_{res}.mp4?source=fallback')
+
+    return all_working_urls[0]
+
+
+def downlaod_media(url, output):
+    download_task = ['curl', '-o', f'{output}', f'{url}']
+    subprocess.run(download_task)
+
+
+def stitch_video(video_input, audio_input, output):
+    stitch_video_task = [FFMPEG_PATH,
+                         '-i', f'{video_input}',
+                         '-i', f'{audio_input}',
+                         '-c:v', 'copy',
+                         '-c:a', 'aac',
+                         '-strict', 'experimental',
+                         output]
+    subprocess.run(stitch_video_task)
+
+
+def get_video_url(json_data):
+    video_url = False
+    try:  # checks if post contains video
+        video_url = json_data['secure_media']['reddit_video']['fallback_url']
+        media_id = video_url.replace('https://v.redd.it/', '').split('/')[0]
+        video_url = highest_res_url(media_id)
+    except TypeError:
+        print('Only posts with videos are supported', 'error')
+
+    return video_url
+
+
+def get_audio_url(json_data):
+    audio_url = False
+    try:
+        audio_url = json_data['secure_media']['reddit_video']['hls_url'].split('HLS')[
+            0]
+        audio_url += 'HLS_AUDIO_160_K.aac'
+    except TypeError:
+        print('No audio found.', 'error')
+
+    return audio_url
+
+
+def main(url):
+    try:  # checks if link is valid
+        request = get(
+            url + '.json',
+            headers={'User-agent': get_user_agent()}
+        )
+    except exceptions.MissingSchema:
+        print('Please provide a valid URL', 'error')
+        quit()
+
+    if 'error' in request.text:
+        if request.status_code == 404:
+            print('Post not found', 'error')
+        quit()
+
+    try:
+        json_data = json.loads(request.text)[0]['data']['children'][0]['data']
+        print('Post Found!')
+        print(f'Title: {json_data["title"]}')
+        print(f'In sub-reddit: {json_data["subreddit_name_prefixed"]}')
+        print(f'Posted by: {json_data["author"]}')
+    except json.decoder.JSONDecodeError:
+        print('Post not found', 'error')
+        quit()
+
+    downlaod_media(get_video_url(json_data), 'video.mp4')
+    downlaod_media(get_audio_url(json_data), 'audio.aac')
+    stitch_video('video.mp4', 'audio.aac', f'{json_data["title"]}.mp4')
+    # cleaning temp files
+    os.remove(f'video.mp4')
+    os.remove(f'audio.aac')
+
+
+if __name__ == '__main__':
+    # change this url to the post's url
+    post_url = "https://www.reddit.com/r/blog/comments/rbqu7c/reddit_recap_2021/"
+    main(post_url)
