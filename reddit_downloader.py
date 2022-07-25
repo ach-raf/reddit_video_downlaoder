@@ -9,6 +9,8 @@ FFMPEG_PATH = r'C:\ffmpeg\bin\ffmpeg'
 
 AVAILABLE_RESOLUTIONS = [1080, 720, 480, 360, 240, 140, 120, '2_4_M', '1_2_M']
 
+CURRENT_DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+
 
 def get_user_agent():
     return 'Mozilla/5.0 (Windows NT 6.0) AppleWebKit/5360 (KHTML, like Gecko) Chrome/39.0.872.0 Mobile Safari/5360'
@@ -75,7 +77,7 @@ def get_audio_url(json_data):
     return audio_url
 
 
-def main(url):
+def reddit_downloader(url):
     try:  # checks if link is valid
         request = get(
             url + '.json',
@@ -106,9 +108,12 @@ def main(url):
     # cleaning temp files
     os.remove(f'video.mp4')
     os.remove(f'audio.aac')
+    file_path = os.path.join(
+        CURRENT_DIR_PATH, 'reddit_downloads', f'{json_data["title"]}.mp4')
+    return file_path
 
 
 if __name__ == '__main__':
     # change this url to the post's url
     post_url = "https://www.reddit.com/r/blog/comments/rbqu7c/reddit_recap_2021/"
-    main(post_url)
+    reddit_downloader(post_url)
